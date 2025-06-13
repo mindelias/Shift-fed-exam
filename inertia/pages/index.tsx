@@ -1,6 +1,7 @@
 import { useState, useCallback, useMemo } from 'react'
 import { Head } from '@inertiajs/react'
 import { useHiddenTickets } from '~/hooks/useHiddenTicket'
+import { ExpandableText } from '~/components/ExpandedText'
 
 export type Ticket = {
   id: string
@@ -27,27 +28,28 @@ interface TicketProps {
   toggle: (id: string) => void
 }
 
-// TODO: move this to a shared component
+const content = `Our login form appears to be vulnerable to SQL injection attacks. When I enter ' OR '1'='1 in the username field, I'm able to bypass authentication. This is a critical security flaw that needs immediate attention.Our login form appears to be vulnerable to SQL injection attacks. When I enter ' OR '1'='1 in the username field, I'm able to bypass authentication. This is a critical security flaw that needs immediate attention.Our login form appears to be vulnerable to SQL injection attacks. When I enter ' OR '1'='1 in the username field, I'm able to bypass authentication. This is a critical security flaw that needs immediate attention.Our login form appears to be vulnerable to SQL injection attacks. When I enter ' OR '1'='1 in the username field, I'm able to bypass authentication. This is a critical security flaw that needs immediate attention.`
 function TagBadge({ label }: { label: string }) {
   return (
     <span
-      className="
-        inline-flex items-center
-        px-3 py-1
-        rounded-md
-        text-xs font-medium
-        bg-sky-100 text-sky-700 border border-sky-300
-      "
+    className="
+    inline-flex items-center
+    px-3 py-1
+    rounded-md
+    text-xs font-medium
+    bg-sky-100 text-sky-700 border border-sky-300
+    "
     >
       {label}
     </span>
   )
 }
 
+// TODO: move this to a separate component
 function TicketsList({ tickets, toggle }: TicketProps) {
   return (
     <ul className="space-y-4">
-      {tickets.map((ticket) => (
+      {tickets.map((ticket, ind) => (
         <li
           key={ticket.id}
           className="group relative bg-white border border-sand-7 rounded-lg p-6 hover:border-sand-8 hover:shadow-sm transition duration-200"
@@ -69,16 +71,21 @@ function TicketsList({ tickets, toggle }: TicketProps) {
 
           {/* added description */}
 
-          <p className="text-sm text-sand-11 whitespace-pre-line mb-4">{ticket.content}</p>
+           {/* This is done to test the expandable text */}
+          { ind === 0? (
+            <ExpandableText text={content} />
+          ) :
+          <ExpandableText text={ticket.content} />
+          }
 
-          <footer>
+          <footer className='flex flex-col md:flex-row sm:justify-between md:items-center'>
             <div className="text-sm text-sand-10">
               By {ticket.userEmail} | {formatDate(ticket.creationTime)}
             </div>
 
             {/* LABELS */}
-            {ticket.labels && ticket.labels?.length  > 0 ? (
-              <div className="mt-4 flex flex-wrap gap-2 justify-end">
+            {ticket?.labels && ticket?.labels?.length  > 0 ? (
+              <div className=" mt-4 md:mt-0 flex flex-wrap gap-2 md:justify-end">
                 {ticket.labels.map((lbl) => (
                   <TagBadge key={lbl} label={lbl} />
                 ))}
