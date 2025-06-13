@@ -27,7 +27,24 @@ interface TicketProps {
   toggle: (id: string) => void
 }
 
-function TicketsList({ tickets,  toggle }: TicketProps) {
+// TODO: move this to a shared component
+function TagBadge({ label }: { label: string }) {
+  return (
+    <span
+      className="
+        inline-flex items-center
+        px-3 py-1
+        rounded-md
+        text-xs font-medium
+        bg-sky-100 text-sky-700 border border-sky-300
+      "
+    >
+      {label}
+    </span>
+  )
+}
+
+function TicketsList({ tickets, toggle }: TicketProps) {
   return (
     <ul className="space-y-4">
       {tickets.map((ticket) => (
@@ -58,6 +75,15 @@ function TicketsList({ tickets,  toggle }: TicketProps) {
             <div className="text-sm text-sand-10">
               By {ticket.userEmail} | {formatDate(ticket.creationTime)}
             </div>
+
+            {/* LABELS */}
+            {ticket.labels && ticket.labels?.length  > 0 ? (
+              <div className="mt-4 flex flex-wrap gap-2 justify-end">
+                {ticket.labels.map((lbl) => (
+                  <TagBadge key={lbl} label={lbl} />
+                ))}
+              </div>
+            ) : null}
           </footer>
         </li>
       ))}
@@ -89,7 +115,6 @@ export default function App({ tickets }: AppProps) {
         (t.title.toLowerCase() + t.content.toLowerCase()).includes(search.toLowerCase())
       ) || []
 
-    /** apply hide filter here so meta line is correct */
     return filtered.filter((t) => !hiddenIds.has(t.id))
   }, [search, tickets, hiddenIds])
   return (
@@ -115,7 +140,7 @@ export default function App({ tickets }: AppProps) {
               <div className="text-sm text-sand-11 mb-4">
                 Showing {ticketData.length} of {tickets.meta.total} issues
                 {hiddenIds.size > 0 && (
-                  <span className='italic'>
+                  <span className="italic">
                     {' '}
                     ({hiddenIds.size} hidden –{' '}
                     <button onClick={restoreAll} className="text-sky-600 italic ">
@@ -128,7 +153,7 @@ export default function App({ tickets }: AppProps) {
             )}
 
             {ticketData.length > 0 ? (
-              <TicketsList tickets={ticketData}  toggle={toggle} />
+              <TicketsList tickets={ticketData} toggle={toggle} />
             ) : (
               <EmptyState hasSearch={Boolean(search)} />
             )}
