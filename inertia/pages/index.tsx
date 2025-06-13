@@ -1,8 +1,10 @@
-import { useState,  useMemo, useEffect } from 'react'
+import { useState, useMemo, useEffect, useRef, useCallback } from 'react'
 import { Head, router } from '@inertiajs/react'
 import { useHiddenTickets } from '~/hooks/useHiddenTicket'
 import { ExpandableText } from '~/components/ExpandedText'
 import { useDebounce } from '~/hooks/useDebounce'
+import { useIntersection } from '~/hooks/useIntersection'
+import Spinner from '~/components/Spinner'
 
 export type Ticket = {
   id: string
@@ -13,7 +15,7 @@ export type Ticket = {
   labels?: string[]
 }
 
-interface AppProps {
+export interface AppProps {
   tickets: {
     data: Ticket[]
     meta: {
@@ -110,6 +112,9 @@ export default function App({ tickets, search: serverSearch }: AppProps) {
   const [search, setSearch] = useState(serverSearch)
   const { hiddenIds, toggle, restoreAll } = useHiddenTickets()
   const debouncedValue = useDebounce(search, 500)
+  const [rows, setRows] = useState<Ticket[]>(tickets.data)
+  const [loading, setLoading] = useState(false)
+  const [hasReachedEnd, setHasReachedEnd] = useState(false)
 
   useEffect(() => {
     router.get(
@@ -124,10 +129,44 @@ export default function App({ tickets, search: serverSearch }: AppProps) {
     )
   }, [debouncedValue])
 
-  const ticketData = useMemo(
-    () => tickets.data.filter((t) => !hiddenIds.has(t.id)),
-    [tickets, hiddenIds]
-  )
+  useEffect(() => {
+    if (tickets.meta.currentPage === 1) {
+      setRows(tickets.data) // new query → start fresh
+    }
+  }, [tickets.data, tickets.meta.currentPage])
+
+  const ticketData = useMemo(() => rows.filter((t) => !hiddenIds.has(t.id)), [rows, hiddenIds])
+
+  // for infinite scroll
+  const loadNextPage = useCallback(() => {
+    if (loading || hasReachedEnd) return
+    if (tickets.meta.currentPage >= tickets.meta.lastPage) return
+
+    setLoading(true)
+    const nextPage = tickets.meta.currentPage + 1
+
+    router.get(
+      '/',
+      { search: debouncedValue, page: nextPage },
+      {
+        preserveScroll: true,
+        preserveState: true,
+        onSuccess: (page) => {
+          const { data, meta } = page.props.tickets as AppProps['tickets']
+
+          /* 1️⃣ append */
+          setRows((prev) => [...prev, ...data])
+
+
+          if (meta.currentPage >= meta.lastPage || data.length === 0) {
+            setHasReachedEnd(true)
+          }
+        },
+        onFinish: () => setLoading(false),
+      }
+    )
+  }, [loading, hasReachedEnd, debouncedValue, tickets.meta])
+  const loaderRef = useIntersection(loadNextPage, '200px', hasReachedEnd)
   return (
     <>
       <Head title="Security Issues" />
@@ -164,7 +203,22 @@ export default function App({ tickets, search: serverSearch }: AppProps) {
             )}
 
             {ticketData.length > 0 ? (
-              <TicketsList tickets={ticketData} toggle={toggle} />
+              <>
+                <TicketsList tickets={ticketData} toggle={toggle} />
+
+                <div ref={loaderRef} />
+
+                {loading && (
+                  <div className="mt-4 flex justify-center">
+                     <Spinner size={30} />
+                  </div>
+                )}
+                {hasReachedEnd && (
+                  <div className="mt-6 text-center text-sand-10 text-sm">
+                    • No more issues to load •
+                  </div>
+                )}
+              </>
             ) : (
               <EmptyState hasSearch={Boolean(search)} />
             )}
