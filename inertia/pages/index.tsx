@@ -1,7 +1,8 @@
-import { useState, useCallback, useMemo } from 'react'
-import { Head } from '@inertiajs/react'
+import { useState,  useMemo, useEffect } from 'react'
+import { Head, router } from '@inertiajs/react'
 import { useHiddenTickets } from '~/hooks/useHiddenTicket'
 import { ExpandableText } from '~/components/ExpandedText'
+import { useDebounce } from '~/hooks/useDebounce'
 
 export type Ticket = {
   id: string
@@ -22,6 +23,7 @@ interface AppProps {
       lastPage: number
     }
   }
+  search: string
 }
 interface TicketProps {
   tickets: Ticket[]
@@ -32,7 +34,7 @@ const content = `Our login form appears to be vulnerable to SQL injection attack
 function TagBadge({ label }: { label: string }) {
   return (
     <span
-    className="
+      className="
     inline-flex items-center
     px-3 py-1
     rounded-md
@@ -71,20 +73,16 @@ function TicketsList({ tickets, toggle }: TicketProps) {
 
           {/* added description */}
 
-           {/* This is done to test the expandable text */}
-          { ind === 0? (
-            <ExpandableText text={content} />
-          ) :
-          <ExpandableText text={ticket.content} />
-          }
+          {/* This is done to test the expandable text */}
+          {ind === 0 ? <ExpandableText text={content} /> : <ExpandableText text={ticket.content} />}
 
-          <footer className='flex flex-col md:flex-row sm:justify-between md:items-center'>
+          <footer className="flex flex-col md:flex-row sm:justify-between md:items-center">
             <div className="text-sm text-sand-10">
               By {ticket.userEmail} | {formatDate(ticket.creationTime)}
             </div>
 
             {/* LABELS */}
-            {ticket?.labels && ticket?.labels?.length  > 0 ? (
+            {ticket?.labels && ticket?.labels?.length > 0 ? (
               <div className=" mt-4 md:mt-0 flex flex-wrap gap-2 md:justify-end">
                 {ticket.labels.map((lbl) => (
                   <TagBadge key={lbl} label={lbl} />
@@ -108,22 +106,28 @@ function EmptyState({ hasSearch }: { hasSearch: boolean }) {
   )
 }
 
-export default function App({ tickets }: AppProps) {
-  const [search, setSearch] = useState('')
+export default function App({ tickets, search: serverSearch }: AppProps) {
+  const [search, setSearch] = useState(serverSearch)
   const { hiddenIds, toggle, restoreAll } = useHiddenTickets()
+  const debouncedValue = useDebounce(search, 500)
 
-  const handleSearch = useCallback(function handleSearch(value: string) {
-    setSearch(value)
-  }, [])
+  useEffect(() => {
+    router.get(
+      '/',
+      { search: debouncedValue },
+      {
+        replace: true,
+        only: ['tickets', 'search'],
+        preserveScroll: true,
+        preserveState: true,
+      }
+    )
+  }, [debouncedValue])
 
-  const ticketData = useMemo(() => {
-    const filtered =
-      tickets?.data.filter((t) =>
-        (t.title.toLowerCase() + t.content.toLowerCase()).includes(search.toLowerCase())
-      ) || []
-
-    return filtered.filter((t) => !hiddenIds.has(t.id))
-  }, [search, tickets, hiddenIds])
+  const ticketData = useMemo(
+    () => tickets.data.filter((t) => !hiddenIds.has(t.id)),
+    [tickets, hiddenIds]
+  )
   return (
     <>
       <Head title="Security Issues" />
@@ -138,7 +142,7 @@ export default function App({ tickets }: AppProps) {
                 type="search"
                 placeholder="Search issues..."
                 className="w-full max-w-md px-4 py-2 border border-sand-7 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
-                onChange={(e) => handleSearch(e.target.value)}
+                onChange={(e) => setSearch(e.target.value)}
                 value={search}
               />
             </header>
