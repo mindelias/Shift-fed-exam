@@ -1,5 +1,6 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useMemo } from 'react'
 import { Head } from '@inertiajs/react'
+import { useHiddenTickets } from '~/hooks/useHiddenTicket'
 
 export type Ticket = {
   id: string
@@ -21,15 +22,32 @@ interface AppProps {
     }
   }
 }
+interface TicketProps {
+  tickets: Ticket[]
+  toggle: (id: string) => void
+}
 
-function TicketsList({ tickets }: { tickets: Ticket[] }) {
+function TicketsList({ tickets,  toggle }: TicketProps) {
   return (
     <ul className="space-y-4">
       {tickets.map((ticket) => (
         <li
           key={ticket.id}
-          className="bg-white border border-sand-7 rounded-lg p-6 hover:border-sand-8 hover:shadow-sm transition duration-200"
+          className="group relative bg-white border border-sand-7 rounded-lg p-6 hover:border-sand-8 hover:shadow-sm transition duration-200"
         >
+          <button
+            type="button"
+            onClick={() => toggle(ticket.id)}
+            className="
+                  hidden group-hover:inline-flex
+                  absolute top-3 right-4
+                  text-sm font-medium
+                  text-sand-10 hover:text-sand-12
+                "
+          >
+            Hide
+          </button>
+
           <h5 className="text-lg font-semibold text-sand-12 mb-2">{ticket.title}</h5>
 
           {/* added description */}
@@ -59,16 +77,21 @@ function EmptyState({ hasSearch }: { hasSearch: boolean }) {
 
 export default function App({ tickets }: AppProps) {
   const [search, setSearch] = useState('')
+  const { hiddenIds, toggle, restoreAll } = useHiddenTickets()
 
   const handleSearch = useCallback(function handleSearch(value: string) {
     setSearch(value)
   }, [])
 
-  const ticketData =
-    tickets?.data.filter((t) =>
-      (t.title.toLowerCase() + t.content.toLowerCase()).includes(search.toLowerCase())
-    ) || []
+  const ticketData = useMemo(() => {
+    const filtered =
+      tickets?.data.filter((t) =>
+        (t.title.toLowerCase() + t.content.toLowerCase()).includes(search.toLowerCase())
+      ) || []
 
+    /** apply hide filter here so meta line is correct */
+    return filtered.filter((t) => !hiddenIds.has(t.id))
+  }, [search, tickets, hiddenIds])
   return (
     <>
       <Head title="Security Issues" />
@@ -91,11 +114,21 @@ export default function App({ tickets }: AppProps) {
             {tickets && (
               <div className="text-sm text-sand-11 mb-4">
                 Showing {ticketData.length} of {tickets.meta.total} issues
+                {hiddenIds.size > 0 && (
+                  <span className='italic'>
+                    {' '}
+                    ({hiddenIds.size} hidden –{' '}
+                    <button onClick={restoreAll} className="text-sky-600 italic ">
+                      restore
+                    </button>
+                    )
+                  </span>
+                )}
               </div>
             )}
 
             {ticketData.length > 0 ? (
-              <TicketsList tickets={ticketData} />
+              <TicketsList tickets={ticketData}  toggle={toggle} />
             ) : (
               <EmptyState hasSearch={Boolean(search)} />
             )}
