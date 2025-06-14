@@ -1,5 +1,13 @@
-import { useState, useCallback } from 'react'
-import { Head } from '@inertiajs/react'
+import { useState, useMemo, useEffect,  useCallback } from 'react'
+import { Head, router } from '@inertiajs/react'
+import { useHiddenTickets } from '~/hooks/useHiddenTicket'
+
+import { useDebounce } from '~/hooks/useDebounce'
+import { useIntersection } from '~/hooks/useIntersection'
+import Spinner from '~/components/Spinner'
+import SeverityChips, { Severity } from '~/components/SeverityChips'
+import TicketsList from '~/components/TicketsList'
+import DownloadIcon from '~/components/DownloadIcon'
 
 export type Ticket = {
   id: string
@@ -10,7 +18,7 @@ export type Ticket = {
   labels?: string[]
 }
 
-interface AppProps {
+export interface AppProps {
   tickets: {
     data: Ticket[]
     meta: {
@@ -20,26 +28,7 @@ interface AppProps {
       lastPage: number
     }
   }
-}
-
-function TicketsList({ tickets }: { tickets: Ticket[] }) {
-  return (
-    <ul className="space-y-4">
-      {tickets.map((ticket) => (
-        <li
-          key={ticket.id}
-          className="bg-white border border-sand-7 rounded-lg p-6 hover:border-sand-8 hover:shadow-sm transition duration-200"
-        >
-          <h5 className="text-lg font-semibold text-sand-12 mb-2">{ticket.title}</h5>
-          <footer>
-            <div className="text-sm text-sand-10">
-              By {ticket.userEmail} | {formatDate(ticket.creationTime)}
-            </div>
-          </footer>
-        </li>
-      ))}
-    </ul>
-  )
+  search: string
 }
 
 function EmptyState({ hasSearch }: { hasSearch: boolean }) {
@@ -52,18 +41,78 @@ function EmptyState({ hasSearch }: { hasSearch: boolean }) {
   )
 }
 
-export default function App({ tickets }: AppProps) {
-  const [search, setSearch] = useState('')
+export default function App({ tickets, search: serverSearch }: AppProps) {
+  const [search, setSearch] = useState(serverSearch)
+  // 👉 hide/restore hook lives in ~/hooks/useHiddenTickets
+  const { hiddenIds, toggle, restoreAll } = useHiddenTickets()
+  const debouncedValue = useDebounce(search, 500)
+  const [rows, setRows] = useState<Ticket[]>(tickets.data)
+  const [loading, setLoading] = useState(false)
+  const [hasReachedEnd, setHasReachedEnd] = useState(false)
+  const [severity, setSeverity] = useState<Severity | null>(null)
 
-  const handleSearch = useCallback(function handleSearch(value: string) {
-    setSearch(value)
-  }, [])
 
-  const ticketData =
-    tickets?.data.filter((t) =>
-      (t.title.toLowerCase() + t.content.toLowerCase()).includes(search.toLowerCase())
-    ) || []
+  // SERVER ROUND-TRIP whenever text or chip changes
+  useEffect(() => {
+    router.get(
+      '/',
+      { search: debouncedValue, severity:  severity ?? undefined, },
+      {
+        replace: true,
+        only: ['tickets', 'search'],
+        preserveScroll: true,
+        preserveState: true,
+      }
+    )
+  }, [debouncedValue, severity])
 
+  // 🔄  Keep “rows” in-sync when a fresh query arrives (page 1)
+  useEffect(() => {
+    if (tickets.meta.currentPage === 1) {
+      setRows(tickets.data)
+    }
+  }, [tickets.data, tickets.meta.currentPage])
+
+   // Client-side filters: hidden items + active severity chipn
+  const ticketData = useMemo(
+    () =>
+      rows
+        .filter((t) => !hiddenIds.has(t.id))
+        .filter((t) => !severity || (t.labels ?? []).includes(severity)),
+    [rows, hiddenIds, severity]
+  )
+
+  // ⬇️ Infinite scroll (IntersectionObserver lives in useIntersection)
+  const loadNextPage = useCallback(() => {
+    if (loading || hasReachedEnd) return
+    if (tickets.meta.currentPage >= tickets.meta.lastPage) return
+
+    setLoading(true)
+    const nextPage = tickets.meta.currentPage + 1
+
+    router.get(
+      '/',
+      { search: debouncedValue, page: nextPage },
+      {
+        preserveScroll: true,
+        preserveState: true,
+        onSuccess: (page) => {
+          const { data, meta } = page.props.tickets as AppProps['tickets']
+
+          /* 1️⃣ append */
+          setRows((prev) => [...prev, ...data])
+
+          if (meta.currentPage >= meta.lastPage || data.length === 0) {
+            setHasReachedEnd(true)
+          }
+        },
+        onFinish: () => setLoading(false),
+      }
+    )
+  }, [loading, hasReachedEnd, debouncedValue, tickets.meta])
+
+  // for infinite scroll
+  const loaderRef = useIntersection(loadNextPage, '200px', hasReachedEnd)
   return (
     <>
       <Head title="Security Issues" />
@@ -73,24 +122,60 @@ export default function App({ tickets }: AppProps) {
           <main>
             <h1 className="text-3xl font-bold text-sand-12 mb-8">Security Issues List</h1>
 
-            <header className="mb-6">
+            <header className=" mb-6">
               <input
                 type="search"
                 placeholder="Search issues..."
                 className="w-full max-w-md px-4 py-2 border border-sand-7 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
-                onChange={(e) => handleSearch(e.target.value)}
+                onChange={(e) => setSearch(e.target.value)}
                 value={search}
               />
+              <div className="flex justify-between items-center mt-10">
+                <SeverityChips value={severity} onChange={setSeverity} />
+
+                <a
+                  href={`/export?search=${encodeURIComponent(search)}`}
+                  className="ml-auto inline-flex items-center gap-1 text-sm text-sky-600 hover:underline"
+                >
+                  <DownloadIcon />
+                  Export CSV
+                </a>
+              </div>
             </header>
 
             {tickets && (
               <div className="text-sm text-sand-11 mb-4">
                 Showing {ticketData.length} of {tickets.meta.total} issues
+                {hiddenIds.size > 0 && (
+                  <span className="italic">
+                    {' '}
+                    ({hiddenIds.size} hidden –{' '}
+                    <button onClick={restoreAll} className="text-sky-600 italic ">
+                      restore
+                    </button>
+                    )
+                  </span>
+                )}
               </div>
             )}
 
             {ticketData.length > 0 ? (
-              <TicketsList tickets={ticketData} />
+              <>
+                <TicketsList tickets={ticketData} toggle={toggle} />
+
+                <div ref={loaderRef} />
+
+                {loading && (
+                  <div className="mt-4 flex justify-center">
+                    <Spinner size={30} />
+                  </div>
+                )}
+                {hasReachedEnd && (
+                  <div className="mt-6 text-center text-sand-10 text-sm">
+                    • No more issues to load •
+                  </div>
+                )}
+              </>
             ) : (
               <EmptyState hasSearch={Boolean(search)} />
             )}
@@ -99,11 +184,4 @@ export default function App({ tickets }: AppProps) {
       </div>
     </>
   )
-}
-
-function formatDate(unixTimestemp: number) {
-  return new Date(unixTimestemp)
-    .toISOString()
-    .replace('T', ' ')
-    .replace(/\.\d{3}Z$/, '')
 }
