@@ -1,10 +1,13 @@
-import { useState, useMemo, useEffect, useRef, useCallback } from 'react'
+import { useState, useMemo, useEffect,  useCallback } from 'react'
 import { Head, router } from '@inertiajs/react'
 import { useHiddenTickets } from '~/hooks/useHiddenTicket'
-import { ExpandableText } from '~/components/ExpandedText'
+
 import { useDebounce } from '~/hooks/useDebounce'
 import { useIntersection } from '~/hooks/useIntersection'
 import Spinner from '~/components/Spinner'
+import SeverityChips, { Severity } from '~/components/SeverityChips'
+import TicketsList from '~/components/TicketsList'
+import DownloadIcon from '~/components/DownloadIcon'
 
 export type Ticket = {
   id: string
@@ -27,76 +30,6 @@ export interface AppProps {
   }
   search: string
 }
-interface TicketProps {
-  tickets: Ticket[]
-  toggle: (id: string) => void
-}
-
-const content = `Our login form appears to be vulnerable to SQL injection attacks. When I enter ' OR '1'='1 in the username field, I'm able to bypass authentication. This is a critical security flaw that needs immediate attention.Our login form appears to be vulnerable to SQL injection attacks. When I enter ' OR '1'='1 in the username field, I'm able to bypass authentication. This is a critical security flaw that needs immediate attention.Our login form appears to be vulnerable to SQL injection attacks. When I enter ' OR '1'='1 in the username field, I'm able to bypass authentication. This is a critical security flaw that needs immediate attention.Our login form appears to be vulnerable to SQL injection attacks. When I enter ' OR '1'='1 in the username field, I'm able to bypass authentication. This is a critical security flaw that needs immediate attention.`
-function TagBadge({ label }: { label: string }) {
-  return (
-    <span
-      className="
-    inline-flex items-center
-    px-3 py-1
-    rounded-md
-    text-xs font-medium
-    bg-sky-100 text-sky-700 border border-sky-300
-    "
-    >
-      {label}
-    </span>
-  )
-}
-
-// TODO: move this to a separate component
-function TicketsList({ tickets, toggle }: TicketProps) {
-  return (
-    <ul className="space-y-4">
-      {tickets.map((ticket, ind) => (
-        <li
-          key={ticket.id}
-          className="group relative bg-white border border-sand-7 rounded-lg p-6 hover:border-sand-8 hover:shadow-sm transition duration-200"
-        >
-          <button
-            type="button"
-            onClick={() => toggle(ticket.id)}
-            className="
-                  hidden group-hover:inline-flex
-                  absolute top-3 right-4
-                  text-sm font-medium
-                  text-sand-10 hover:text-sand-12
-                "
-          >
-            Hide
-          </button>
-
-          <h5 className="text-lg font-semibold text-sand-12 mb-2">{ticket.title}</h5>
-
-          {/* added description */}
-
-          {/* This is done to test the expandable text */}
-          {ind === 0 ? <ExpandableText text={content} /> : <ExpandableText text={ticket.content} />}
-
-          <footer className="flex flex-col md:flex-row sm:justify-between md:items-center">
-            <div className="text-sm text-sand-10">
-              By {ticket.userEmail} | {formatDate(ticket.creationTime)}
-            </div>
-
-            {/* LABELS */}
-            {ticket?.labels && ticket?.labels?.length > 0 ? (
-              <div className=" mt-4 md:mt-0 flex flex-wrap gap-2 md:justify-end">
-                {ticket.labels.map((lbl) => (
-                  <TagBadge key={lbl} label={lbl} />
-                ))}
-              </div>
-            ) : null}
-          </footer>
-        </li>
-      ))}
-    </ul>
-  )
-}
 
 function EmptyState({ hasSearch }: { hasSearch: boolean }) {
   return (
@@ -110,16 +43,20 @@ function EmptyState({ hasSearch }: { hasSearch: boolean }) {
 
 export default function App({ tickets, search: serverSearch }: AppProps) {
   const [search, setSearch] = useState(serverSearch)
+  // 👉 hide/restore hook lives in ~/hooks/useHiddenTickets
   const { hiddenIds, toggle, restoreAll } = useHiddenTickets()
   const debouncedValue = useDebounce(search, 500)
   const [rows, setRows] = useState<Ticket[]>(tickets.data)
   const [loading, setLoading] = useState(false)
   const [hasReachedEnd, setHasReachedEnd] = useState(false)
+  const [severity, setSeverity] = useState<Severity | null>(null)
 
+
+  // SERVER ROUND-TRIP whenever text or chip changes
   useEffect(() => {
     router.get(
       '/',
-      { search: debouncedValue },
+      { search: debouncedValue, severity:  severity ?? undefined, },
       {
         replace: true,
         only: ['tickets', 'search'],
@@ -127,17 +64,25 @@ export default function App({ tickets, search: serverSearch }: AppProps) {
         preserveState: true,
       }
     )
-  }, [debouncedValue])
+  }, [debouncedValue, severity])
 
+  // 🔄  Keep “rows” in-sync when a fresh query arrives (page 1)
   useEffect(() => {
     if (tickets.meta.currentPage === 1) {
-      setRows(tickets.data) // new query → start fresh
+      setRows(tickets.data)
     }
   }, [tickets.data, tickets.meta.currentPage])
 
-  const ticketData = useMemo(() => rows.filter((t) => !hiddenIds.has(t.id)), [rows, hiddenIds])
+   // Client-side filters: hidden items + active severity chipn
+  const ticketData = useMemo(
+    () =>
+      rows
+        .filter((t) => !hiddenIds.has(t.id))
+        .filter((t) => !severity || (t.labels ?? []).includes(severity)),
+    [rows, hiddenIds, severity]
+  )
 
-  // for infinite scroll
+  // ⬇️ Infinite scroll (IntersectionObserver lives in useIntersection)
   const loadNextPage = useCallback(() => {
     if (loading || hasReachedEnd) return
     if (tickets.meta.currentPage >= tickets.meta.lastPage) return
@@ -157,7 +102,6 @@ export default function App({ tickets, search: serverSearch }: AppProps) {
           /* 1️⃣ append */
           setRows((prev) => [...prev, ...data])
 
-
           if (meta.currentPage >= meta.lastPage || data.length === 0) {
             setHasReachedEnd(true)
           }
@@ -166,6 +110,8 @@ export default function App({ tickets, search: serverSearch }: AppProps) {
       }
     )
   }, [loading, hasReachedEnd, debouncedValue, tickets.meta])
+
+  // for infinite scroll
   const loaderRef = useIntersection(loadNextPage, '200px', hasReachedEnd)
   return (
     <>
@@ -176,7 +122,7 @@ export default function App({ tickets, search: serverSearch }: AppProps) {
           <main>
             <h1 className="text-3xl font-bold text-sand-12 mb-8">Security Issues List</h1>
 
-            <header className="mb-6">
+            <header className=" mb-6">
               <input
                 type="search"
                 placeholder="Search issues..."
@@ -184,6 +130,17 @@ export default function App({ tickets, search: serverSearch }: AppProps) {
                 onChange={(e) => setSearch(e.target.value)}
                 value={search}
               />
+              <div className="flex justify-between items-center mt-10">
+                <SeverityChips value={severity} onChange={setSeverity} />
+
+                <a
+                  href={`/export?search=${encodeURIComponent(search)}`}
+                  className="ml-auto inline-flex items-center gap-1 text-sm text-sky-600 hover:underline"
+                >
+                  <DownloadIcon />
+                  Export CSV
+                </a>
+              </div>
             </header>
 
             {tickets && (
@@ -210,7 +167,7 @@ export default function App({ tickets, search: serverSearch }: AppProps) {
 
                 {loading && (
                   <div className="mt-4 flex justify-center">
-                     <Spinner size={30} />
+                    <Spinner size={30} />
                   </div>
                 )}
                 {hasReachedEnd && (
@@ -227,11 +184,4 @@ export default function App({ tickets, search: serverSearch }: AppProps) {
       </div>
     </>
   )
-}
-
-function formatDate(unixTimestemp: number) {
-  return new Date(unixTimestemp)
-    .toISOString()
-    .replace('T', ' ')
-    .replace(/\.\d{3}Z$/, '')
 }
