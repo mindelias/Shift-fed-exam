@@ -16,6 +16,16 @@
 ## 4. dev server
 `npm run dev `
  
+## 5.  Running the tests 🧪
+ - Full test run (one-shot)
+ `npm test  `      # alias for `npx jest`
+
+- Watch mode – re-executes the affected tests whenever you save a file.
+
+`npm run test:watch`
+- Coverage report – generates both console summary and an HTML report in coverage/.
+ 
+`npm run test:coverage`
 
 # Extra Feature & Implementation Notes
 

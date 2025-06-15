@@ -1,0 +1,15 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "jsx": "react-jsx",      // <— compile JSX
+    "module": "commonjs",   // <— keep Jest happy
+    "outDir": "./build",    // same as before
+    "rootDir": "."          // same as before
+  },
+  "include": [
+    "inertia/**/*",         // tests + src used by tests
+    "resources/js/**/*",
+    
+  ],
+  "exclude": ["node_modules", "build"]  // DON’T exclude inertia
+}
