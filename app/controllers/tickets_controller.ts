@@ -4,7 +4,7 @@ import { parseSearch } from '#config/searchparser'
 import { stringify } from 'csv-stringify/sync'
 
 export default class TicketsController {
-  private buildQuery(f: ReturnType<typeof parseSearch>) {
+  private buildQuery(f: ReturnType<typeof parseSearch>, severity?: string) {
     const q = Ticket.query()
 
     if (f.term) {
@@ -17,26 +17,41 @@ export default class TicketsController {
     if (f.before) q.where('creation_time', '<=', f.before)
     if (f.reporter) q.whereRaw('LOWER(user_email) LIKE ?', [`%${f.reporter}%`])
 
+    // Add severity filtering (server-side)
+    if (severity) {
+      const likeSeverity = `%${severity}%`
+      q.whereRaw('EXISTS (SELECT 1 FROM json_each(labels) WHERE  value LIKE ?)', [likeSeverity])
+    }
+
     return q
   }
+
   async index({ request, inertia }: HttpContext) {
     const page = request.input('page', 1)
     const pageSize = 20
     const rawSearch = (request.input('search') as string | null) ?? ''
+    const severity = request.input('severity', null) // Get severity from request
     const filters = parseSearch(rawSearch.trim())
 
-    const tickets = await this.buildQuery(filters)
+    const tickets = await this.buildQuery(filters, severity || undefined)
       .orderBy('creation_time', 'desc')
       .paginate(page, pageSize)
 
     return inertia.render('index', {
       tickets: tickets.toJSON(),
       search: rawSearch,
+      severity,
     })
   }
+
   public async exportCsv({ request, response }: HttpContext) {
-    const filters = parseSearch((request.input('search') as string | null) ?? '')
-    const rows = await this.buildQuery(filters).orderBy('creation_time').exec()
+    const rawSearch = (request.input('search') as string | null) ?? ''
+    const severity = request.input('severity', null)
+    const filters = parseSearch(rawSearch.trim())
+
+    const rows = await this.buildQuery(filters, severity || undefined)
+      .orderBy('creation_time')
+      .exec()
 
     const csv = stringify(
       rows.map((r) => ({

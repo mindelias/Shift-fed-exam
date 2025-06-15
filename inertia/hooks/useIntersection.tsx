@@ -11,9 +11,8 @@ export function useIntersection(onEnter: () => void, rootMargin = '200px', disab
     const obs = new IntersectionObserver(
       ([entry]) => {
         if (entry.isIntersecting && !busy.current) {
-          busy.current = true // lock
+          busy.current = true
           onEnter()
-          // unlock 300 ms later (enough for state flip)
           setTimeout(() => {
             busy.current = false
           }, 300)

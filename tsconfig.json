@@ -1,10 +1,22 @@
-{
+ {
   "extends": "@adonisjs/tsconfig/tsconfig.app.json",
   "compilerOptions": {
     "rootDir": "./",
     "outDir": "./build",
-    "resolveJsonModule": true
+    "resolveJsonModule": true,
+    "types": ["jest"], // Add Jest types
+    "esModuleInterop": true, // Enable ESM interop
+    "allowJs": true, // Allow JavaScript files
+    "module": "ESNext", // Use ESM modules
+    "moduleResolution": "node", // Node-style module resolution
+    "baseUrl": ".", // Base path for module resolution
+    "paths": {
+      "@/*": ["resources/js/*"] // Map @/ to resources/js/
+    }
   },
+  "include": [
+    "resources/js/**/*" // Include your JS/TS files
+  ],
   "exclude": [
     "./inertia/**/*",
     "node_modules",
