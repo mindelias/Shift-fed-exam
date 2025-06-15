@@ -1,8 +1,28 @@
- # Extra Feature & Implementation Notes
+# Quick-start (fresh clone)
+
+ 
+## 1. copy env and generate APP_KEY
+`cp .env.example .env`
+`node ace generate:key`
+
+## 2. create SQLite dir
+`mkdir -p tmp`
+
+## 3. install & seed
+`npm install`
+`node ace migration:fresh`
+`node ace db:seed`
+
+## 4. dev server
+`npm run dev `
+ 
+
+# Extra Feature & Implementation Notes
 
 This companion README complements the original **README.md** provided with the exam assignment.  It documents the *Part 3 "extra‑touch"* feature, outlines key implementation decisions, and records a few lessons learned along the way.
 
 ---
+
 
 ## 📌 Feature Added — “Smart Severity Filtering + One‑click CSV Export”
 

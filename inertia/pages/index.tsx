@@ -1,13 +1,10 @@
-import { useState, useMemo, useEffect,  useCallback } from 'react'
-import { Head, router } from '@inertiajs/react'
+import { Head,   } from '@inertiajs/react'
 import { useHiddenTickets } from '~/hooks/useHiddenTicket'
-
-import { useDebounce } from '~/hooks/useDebounce'
-import { useIntersection } from '~/hooks/useIntersection'
 import Spinner from '~/components/Spinner'
 import SeverityChips, { Severity } from '~/components/SeverityChips'
 import TicketsList from '~/components/TicketsList'
 import DownloadIcon from '~/components/DownloadIcon'
+import { useTicketsManager } from '~/hooks/useTickerManager'
 
 export type Ticket = {
   id: string
@@ -29,6 +26,7 @@ export interface AppProps {
     }
   }
   search: string
+  severity: Severity | null
 }
 
 function EmptyState({ hasSearch }: { hasSearch: boolean }) {
@@ -41,78 +39,26 @@ function EmptyState({ hasSearch }: { hasSearch: boolean }) {
   )
 }
 
-export default function App({ tickets, search: serverSearch }: AppProps) {
-  const [search, setSearch] = useState(serverSearch)
-  // 👉 hide/restore hook lives in ~/hooks/useHiddenTickets
+
+
+export default function App({ tickets, search: serverSearch, severity: serverSeverity }: AppProps) {
   const { hiddenIds, toggle, restoreAll } = useHiddenTickets()
-  const debouncedValue = useDebounce(search, 500)
-  const [rows, setRows] = useState<Ticket[]>(tickets.data)
-  const [loading, setLoading] = useState(false)
-  const [hasReachedEnd, setHasReachedEnd] = useState(false)
-  const [severity, setSeverity] = useState<Severity | null>(null)
+  const {
+    search,
+    setSearch,
+    severity,
+    setSeverity,
+    ticketData,
+    loading,
+    hasReachedEnd,
+    loaderRef
+  } = useTicketsManager({
+    initialTickets: tickets,
+    initialSearch: serverSearch,
+    initialSeverity: serverSeverity,
+    hiddenIds,
+  })
 
-
-  // SERVER ROUND-TRIP whenever text or chip changes
-  useEffect(() => {
-    router.get(
-      '/',
-      { search: debouncedValue, severity:  severity ?? undefined, },
-      {
-        replace: true,
-        only: ['tickets', 'search'],
-        preserveScroll: true,
-        preserveState: true,
-      }
-    )
-  }, [debouncedValue, severity])
-
-  // 🔄  Keep “rows” in-sync when a fresh query arrives (page 1)
-  useEffect(() => {
-    if (tickets.meta.currentPage === 1) {
-      setRows(tickets.data)
-    }
-  }, [tickets.data, tickets.meta.currentPage])
-
-   // Client-side filters: hidden items + active severity chipn
-  const ticketData = useMemo(
-    () =>
-      rows
-        .filter((t) => !hiddenIds.has(t.id))
-        .filter((t) => !severity || (t.labels ?? []).includes(severity)),
-    [rows, hiddenIds, severity]
-  )
-
-  // ⬇️ Infinite scroll (IntersectionObserver lives in useIntersection)
-  const loadNextPage = useCallback(() => {
-    if (loading || hasReachedEnd) return
-    if (tickets.meta.currentPage >= tickets.meta.lastPage) return
-
-    setLoading(true)
-    const nextPage = tickets.meta.currentPage + 1
-
-    router.get(
-      '/',
-      { search: debouncedValue, page: nextPage },
-      {
-        preserveScroll: true,
-        preserveState: true,
-        onSuccess: (page) => {
-          const { data, meta } = page.props.tickets as AppProps['tickets']
-
-          /* 1️⃣ append */
-          setRows((prev) => [...prev, ...data])
-
-          if (meta.currentPage >= meta.lastPage || data.length === 0) {
-            setHasReachedEnd(true)
-          }
-        },
-        onFinish: () => setLoading(false),
-      }
-    )
-  }, [loading, hasReachedEnd, debouncedValue, tickets.meta])
-
-  // for infinite scroll
-  const loaderRef = useIntersection(loadNextPage, '200px', hasReachedEnd)
   return (
     <>
       <Head title="Security Issues" />
@@ -131,7 +77,12 @@ export default function App({ tickets, search: serverSearch }: AppProps) {
                 value={search}
               />
               <div className="flex justify-between items-center mt-10">
-                <SeverityChips value={severity} onChange={setSeverity} />
+                <div>
+                  <SeverityChips value={severity} onChange={setSeverity} />
+                  <p className="text-xs text-sand-10 -mt-3">
+                    click a label to filter by severity
+                  </p>
+                </div>
 
                 <a
                   href={`/export?search=${encodeURIComponent(search)}`}
@@ -185,3 +136,5 @@ export default function App({ tickets, search: serverSearch }: AppProps) {
     </>
   )
 }
+
+
